@@ -100,6 +100,7 @@ struct thread
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
+	int64_t wake_time;
   };
 
 /* If false (default), use round-robin scheduler.
@@ -118,6 +119,10 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+bool wake_time_cmp(const struct list_elem *e1, const struct list_elem *e2);
+void thread_sleep (int64_t ticks);
+void thread_check_time (void);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);

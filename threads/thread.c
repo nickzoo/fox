@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "devices/timer.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -23,6 +24,8 @@
 /* List of processes in THREAD_READY state, that is, processes
    that are ready to run but not actually running. */
 static struct list ready_list;
+
+static struct list blocked_list;
 
 /* List of all processes.  Processes are added to this list
    when they are first scheduled and removed when they exit. */
@@ -91,6 +94,7 @@ thread_init (void)
 
   lock_init (&tid_lock);
   list_init (&ready_list);
+  list_init (&blocked_list);
   list_init (&all_list);
 
   /* Set up a thread structure for the running thread. */
@@ -248,6 +252,43 @@ thread_unblock (struct thread *t)
   list_push_back (&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level (old_level);
+}
+
+bool
+wake_time_cmp(const struct list_elem *e1, const struct list_elem *e2)
+{
+  struct thread *t1 = list_entry (e1, struct thread, elem);
+  struct thread *t2 = list_entry (e2, struct thread, elem);
+  ASSERT (is_thread (t1));
+  ASSERT (is_thread (t2));
+  return t1->wake_time < t2->wake_time;
+}
+
+void
+thread_sleep (int64_t ticks)
+{
+  ASSERT (intr_get_level () == INTR_ON);
+  intr_disable();
+
+  struct thread *t = thread_current ();
+  t->wake_time = timer_ticks () + ticks;
+  list_insert_ordered (&blocked_list, &t->elem, wake_time_cmp, NULL);
+  thread_block();
+  intr_set_level(INTR_ON);
+}
+
+void
+thread_check_time (void)
+{
+  enum intr_level old_level = intr_disable ();
+  while (!list_empty (&blocked_list)) {
+    struct list_elem *current = list_begin(&blocked_list);
+    struct thread *t = list_entry(current, struct thread, elem);
+    if (t->wake_time > timer_ticks()) break;
+    list_pop_front (&blocked_list);
+    thread_unblock (t);
+  }
+  intr_set_level(old_level);
 }
 
 /* Returns the name of the running thread. */
